@@ -1,0 +1,27 @@
+name: Temu Auto Feed (3h)
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install deps
+        run: |
+          npm ci || npm i
+          npm run install:pw
+      - name: Run scraper
+        run: npx ts-node scraper/temu_scraper.ts
+      - name: Commit changes if any
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(feed): 3h refresh with new items"
+          branch: ${{ github.ref_name }}
