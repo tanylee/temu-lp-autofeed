@@ -1,25 +1,24 @@
 import { Page } from "@playwright/test";
+
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 type AffCfg = { baseRedirect?: string; appendParams?: Record<string,string> };
 
 export function withAffiliate(url: string, globalCfg: AffCfg = {}, perCat?: AffCfg) {
-  // 1) добавим UTM к самому URL товара
   let out = url;
   const utm = perCat?.appendParams || globalCfg.appendParams;
   if (utm && Object.keys(utm).length) {
     try {
-      const u = new URL(out); const sp = new URLSearchParams(u.search);
+      const u = new URL(out);
+      const sp = new URLSearchParams(u.search);
       for (const [k,v] of Object.entries(utm)) sp.set(k, v);
-      u.search = sp.toString(); out = u.toString();
+      u.search = sp.toString();
+      out = u.toString();
     } catch {}
   }
-
-  // 2) если задан короткий редирект — оборачиваем товар
   const base = perCat?.baseRedirect || globalCfg.baseRedirect;
   if (base) {
     const sep = base.includes("?") ? "&" : "?";
-    // стандартный паттерн temu.to: короткая ссылка + ?u=<товар>
     return `${base}${sep}u=${encodeURIComponent(out)}`;
   }
   return out;
