@@ -1,4 +1,3 @@
-// scraper/temu_scraper.ts
 import fs from 'fs';
 import path from 'path';
 import { chromium, devices, Page } from '@playwright/test';
@@ -15,7 +14,7 @@ type Item = {
 };
 type Feed = { generatedAt: string; categories: { name: string; items: Item[] }[] };
 
-// ─── безопасное чтение предыдущего фида ────────────────────────────────────────
+// ─── Safe feed read ────────────────────────────────────────────────────────────
 function readPrevFeed(filePath: string): Feed | null {
   try {
     const raw = fs.readFileSync(filePath, 'utf8').trim();
@@ -32,12 +31,10 @@ function readPrevFeed(filePath: string): Feed | null {
       };
     }
     return { generatedAt: new Date().toISOString(), categories: [] };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
-// ─── merge с дедупликацией ────────────────────────────────────────────────────
+// ─── Merge with dedup ─────────────────────────────────────────────────────────
 function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
   const out: Feed = { generatedAt: new Date().toISOString(), categories: [] };
   const prevMap: Record<string, Item[]> =
@@ -49,35 +46,44 @@ function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
     const fresh = Array.isArray(freshRaw) ? freshRaw : [];
     const existed = prevMap[name] || [];
     const merged = uniqueBy([...fresh, ...existed], x => String(x.id));
-    out.categories.push({
-      name,
-      items: merged.slice(0, CFG.scrape.historyCapPerCategory || 100000)
-    });
+    out.categories.push({ name, items: merged.slice(0, CFG.scrape.historyCapPerCategory || 100000) });
   }
   if (prev && Array.isArray(prev.categories)) {
     for (const c of prev.categories) {
-      if (!out.categories.find(x => x.name === c.name)) {
-        out.categories.push({ name: c.name, items: Array.isArray(c.items) ? c.items : [] });
-      }
+      if (!out.categories.find(x => x.name === c.name)) out.categories.push({ name: c.name, items: Array.isArray(c.items) ? c.items : [] });
     }
   }
   return out;
 }
 
-// ─── утилиты фильтрации «левых» страниц ───────────────────────────────────────
+// ─── Anti-app-redirect filters ────────────────────────────────────────────────
 const BAD_URL = /(download-temu\.html|play\.google\.com|apps\.apple\.com|itunes\.apple\.com)/i;
-const BAD_TITLE = /(google\s*play|shop on temu for exclusive offers)/i;
-const TEMU_HOST_OK = /(temu\.com|temu\.to)$/i;
+const BAD_TITLE = /(google\s*play|app\s*store|shop on temu for exclusive offers)/i;
 
+function isGoodTemuUrl(u: string) {
+  try {
+    const h = new URL(u).host;
+    return (/\.temu\.com$/i.test(h) || /temu\.to$/i.test(h)) && !BAD_URL.test(u);
+  } catch { return false; }
+}
 function looksBad(url?: string, title?: string) {
-  return (url && BAD_URL.test(url)) || (title && BAD_TITLE.test(title || ''));
+  return (url && BAD_URL.test(url)) || (title && BAD_TITLE.test(title));
 }
 
-// ─── скрейпер ─────────────────────────────────────────────────────────────────
+// ─── Scraper helpers ─────────────────────────────────────────────────────────
 async function waitForGoods(page: Page, timeout = 20000) {
-  await page.waitForSelector('div[data-goods-id], div[data-sku-id], a[href*="goods_id"], a[href*="detail"] img', { timeout }).catch(()=>{});
+  await page.waitForSelector(
+    [
+      'div[data-goods-id]',
+      'div[data-sku-id]',
+      'a[href*="goods_id"]',
+      'a[href*="detail"]:has(img)'
+    ].join(','),
+    { timeout }
+  ).catch(()=>{});
 }
 
+// ─── Category scrape ──────────────────────────────────────────────────────────
 async function scrapeCategory(page: Page, catName: string, url: string, cfg: any): Promise<Item[]> {
   const results: Item[] = [];
 
@@ -113,10 +119,7 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
             || await card.evaluate((el:any)=> el.querySelector('a')?.getAttribute('href') || '');
           if (href && !/^https?:/i.test(href)) href = new URL(href, page.url()).toString();
 
-          // игнор карточек не на temu-доменах
-          if (href) {
-            try { const h = new URL(href).host; if (!/temu\./.test(h) && !/temu\.to/.test(h)) continue; } catch {}
-          }
+          if (!href || !isGoodTemuUrl(href)) continue;
 
           let id = dataId || '';
           if (!id && href) {
@@ -146,12 +149,10 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
           const priceText = await card.evaluate((el:any)=> el.querySelector('[data-price], .price, ._price, [class*="price"]')?.textContent?.trim() || '');
           const price = parsePrice(priceText);
 
-          let productUrl = href || (id ? `https://www.temu.com/goods.html?goods_id=${encodeURIComponent(id)}` : '');
+          const productUrl = href;
 
-          // фильтры против «скачайте приложение» и баннеров
           if (!title || !image) continue;
           if (looksBad(productUrl, title)) continue;
-          if (BAD_TITLE.test(title)) continue;
 
           results.push({ id: id || productUrl, title, price, image, productUrl });
           found++;
@@ -164,7 +165,7 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
     await page.evaluate(async () => {
       await new Promise<void>(res => {
         let y = 0; const step = 700; const max = 7000;
-        function s(){ y += step; window.scrollTo(0, y); if (y < max) requestAnimationFrame(s); else setTimeout(()=>res(), 400); }
+        function s(){ y += step; window.scrollTo(0, y); if (y < max) requestAnimationFrame(s); else setTimeout(()=>res(), 350); }
         s();
       });
     });
@@ -184,12 +185,12 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
   return unique.slice(0, CFG.scrape.itemsPerCategoryCap || 9999);
 }
 
+// ─── Enrichment ───────────────────────────────────────────────────────────────
 async function enrichDescriptions(page: Page, items: Item[], limit: number) {
   const targets = items.slice(0, limit);
   for (const it of targets) {
     try {
-      // не ходим на заведомо плохие урлы
-      if (looksBad(it.productUrl, it.title)) continue;
+      if (looksBad(it.productUrl, it.title) || !isGoodTemuUrl(it.productUrl)) continue;
 
       await page.goto(it.productUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(()=>{});
@@ -211,15 +212,18 @@ async function enrichDescriptions(page: Page, items: Item[], limit: number) {
   }
 }
 
-// ─── main ──────────────────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   const browser = await chromium.launch({ headless: CFG.scrape.headless !== false });
   const context = await browser.newContext({
-    // форсируем десктоп, чтобы не тащило на приложение
     ...devices['Desktop Chrome'],
     locale: "en-US",
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    extraHTTPHeaders: {
+      "accept-language": "en-US,en;q=0.9",
+      "referer": "https://www.temu.com/",
+      "sec-fetch-site": "same-origin"
+    }
   });
   const page = await context.newPage();
   await softHumanize(page);
@@ -232,14 +236,9 @@ async function main() {
     try {
       const items = await scrapeCategory(page, cat.name, cat.url, CFG);
       const newItems = items.slice(0, CFG.scrape.maxNewItemsPerRunPerCategory || 20);
-
       if (CFG.scrape.enrichDetails) await enrichDescriptions(page, newItems, CFG.scrape.enrichLimitPerRun || 30);
 
-      // аффилиатная ссылка
-      const withAff = newItems.map(x => ({
-        ...x,
-        productUrl: withAffiliate(x.productUrl, CFG.affiliate)
-      }));
+      const withAff = newItems.map(x => ({ ...x, productUrl: withAffiliate(x.productUrl, CFG.affiliate) }));
       byCat[cat.name] = withAff;
 
       const [a,b] = CFG.scrape.sleepMsBetweenCats || [500, 1500];
