@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Moodette — Chic Edit</title>
+  <link rel="stylesheet" href="./public/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <h1>Your Chic Edit</h1>
+    <p>From Pinterest-perfect room decor to trending lifestyle finds — curated picks that make your space stand out.</p>
+  </header>
+
+  <nav id="tabs" class="tabs"></nav>
+  <main>
+    <div id="grid" class="grid"></div>
+    <button id="more" class="more" style="display:none">Show more</button>
+  </main>
+
+  <script>
+  const FEED_URL = './data/products.json?ts=' + Date.now();
+  const PAGE_SIZE = 24;
+  const esc = s => String(s).replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+  (async ()=>{
+    const tabs = document.getElementById('tabs');
+    const grid = document.getElementById('grid');
+    const more = document.getElementById('more');
+    grid.textContent = 'Loading…';
+
+    try{
+      const r = await fetch(FEED_URL, {cache:'no-cache'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const feed = await r.json();
+
+      const cats = (feed.categories||[]).filter(c=>Array.isArray(c.items)&&c.items.length);
+      const params = new URLSearchParams(location.search);
+      let active = params.get('cat') || '';
+
+      tabs.innerHTML = cats.map(c=>{
+        const is = active ? c.name === active : false;
+        return `<a class="tab ${is?'active':''}" href="?cat=${encodeURIComponent(c.name)}">${esc(c.name)}</a>`;
+      }).join('') + (active ? `<a class="tab" href="?">All</a>` : '');
+
+      const pool = active ? cats.filter(c=>c.name===active) : cats;
+      const all = pool.flatMap(c => c.items.map(x => ({...x, _cat:c.name})));
+
+      grid.innerHTML = '';
+      let shown = 0;
+      const renderMore = ()=>{
+        const slice = all.slice(shown, shown + PAGE_SIZE);
+        const html = slice.map(p=>{
+          const price = (p.price && !isNaN(p.price)) ? ('$'+p.price) : '';
+          const desc = p.description ? `<div class="desc">${esc(p.description)}</div>` : '';
+          return `<a class="card" href="${p.productUrl}" target="_blank" rel="nofollow noopener">
+              <img loading="lazy" src="${p.image}" alt="${esc(p.title)}">
+              <div class="tx">
+                <div class="ti">${esc(p.title)}</div>
+                <div class="pr">${price}</div>
+                ${desc}
+                <div class="ct">${esc(p._cat||'')}</div>
+              </div>
+            </a>`;
+        }).join('');
+        grid.insertAdjacentHTML('beforeend', html);
+        shown += slice.length;
+        more.style.display = (shown < all.length) ? 'block' : 'none';
+      };
+
+      renderMore();
+      more.addEventListener('click', renderMore);
+      if (!all.length) grid.textContent = 'No items yet.';
+    }catch(e){
+      grid.innerHTML = '<b>Feed error.</b> Open Console (F12).';
+      console.error('[LP] feed error:', e);
+    }
+  })();
+  </script>
+</body>
+</html>
