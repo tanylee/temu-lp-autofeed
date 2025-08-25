@@ -1,0 +1,4 @@
+[[headers]]
+  for = "/data/products.json"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"
