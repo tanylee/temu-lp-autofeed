@@ -1,0 +1,21 @@
+{
+  "affiliate": {
+    "baseRedirect": "https://temu.to/k/gd1pto8322c",
+    "appendParams": {
+      "utm_source": "pinterest",
+      "utm_campaign": "moodette"
+    }
+  },
+  "scrape": {
+    "headless": true,
+    "locale": "en-US,en;q=0.9",
+    "timeoutMs": 45000,
+    "maxPagesPerCategory": 2,
+    "itemsPerCategoryCap": 200,
+    "maxNewItemsPerRunPerCategory": 20,
+    "historyCapPerCategory": 100000,
+    "enrichDetails": true,
+    "enrichLimitPerRun": 30,
+    "sleepMsBetweenCats": [600, 1500]
+  }
+}
