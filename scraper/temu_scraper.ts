@@ -15,21 +15,14 @@ type Item = {
 };
 type Feed = { generatedAt: string; categories: { name: string; items: Item[] }[] };
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Helpers (robust feed read + merge)
-// ────────────────────────────────────────────────────────────────────────────────
+// ─── безопасное чтение предыдущего фида ────────────────────────────────────────
 function readPrevFeed(filePath: string): Feed | null {
   try {
     const raw = fs.readFileSync(filePath, 'utf8').trim();
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-
-    // Если ранее файл был массивом товаров — приводим к новому формату
-    if (Array.isArray(parsed)) {
-      return { generatedAt: new Date().toISOString(), categories: [] };
-    }
+    if (Array.isArray(parsed)) return { generatedAt: new Date().toISOString(), categories: [] };
     if (parsed && Array.isArray(parsed.categories)) {
-      // Нормализуем items на случай битых значений
       return {
         generatedAt: parsed.generatedAt || new Date().toISOString(),
         categories: parsed.categories.map((c: any) => ({
@@ -44,9 +37,9 @@ function readPrevFeed(filePath: string): Feed | null {
   }
 }
 
+// ─── merge с дедупликацией ────────────────────────────────────────────────────
 function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
   const out: Feed = { generatedAt: new Date().toISOString(), categories: [] };
-
   const prevMap: Record<string, Item[]> =
     (prev && Array.isArray(prev.categories))
       ? Object.fromEntries(prev.categories.map(c => [c.name, Array.isArray(c.items) ? c.items : []]))
@@ -61,8 +54,6 @@ function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
       items: merged.slice(0, CFG.scrape.historyCapPerCategory || 100000)
     });
   }
-
-  // сохранить категории, которые не собирались в этот прогон
   if (prev && Array.isArray(prev.categories)) {
     for (const c of prev.categories) {
       if (!out.categories.find(x => x.name === c.name)) {
@@ -73,9 +64,16 @@ function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
   return out;
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Scraper
-// ────────────────────────────────────────────────────────────────────────────────
+// ─── утилиты фильтрации «левых» страниц ───────────────────────────────────────
+const BAD_URL = /(download-temu\.html|play\.google\.com|apps\.apple\.com|itunes\.apple\.com)/i;
+const BAD_TITLE = /(google\s*play|shop on temu for exclusive offers)/i;
+const TEMU_HOST_OK = /(temu\.com|temu\.to)$/i;
+
+function looksBad(url?: string, title?: string) {
+  return (url && BAD_URL.test(url)) || (title && BAD_TITLE.test(title || ''));
+}
+
+// ─── скрейпер ─────────────────────────────────────────────────────────────────
 async function waitForGoods(page: Page, timeout = 20000) {
   await page.waitForSelector('div[data-goods-id], div[data-sku-id], a[href*="goods_id"], a[href*="detail"] img', { timeout }).catch(()=>{});
 }
@@ -87,7 +85,6 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
   await page.waitForLoadState('networkidle', { timeout: cfg.scrape.timeoutMs }).catch(()=>{});
   await waitForGoods(page, 20000);
 
-  // если уводит на download-temu — повторяем заход
   if (/download-temu\.html/i.test(page.url())) {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: cfg.scrape.timeoutMs });
     await page.waitForLoadState('networkidle', { timeout: cfg.scrape.timeoutMs }).catch(()=>{});
@@ -115,6 +112,11 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
           let href = await card.getAttribute('href')
             || await card.evaluate((el:any)=> el.querySelector('a')?.getAttribute('href') || '');
           if (href && !/^https?:/i.test(href)) href = new URL(href, page.url()).toString();
+
+          // игнор карточек не на temu-доменах
+          if (href) {
+            try { const h = new URL(href).host; if (!/temu\./.test(h) && !/temu\.to/.test(h)) continue; } catch {}
+          }
 
           let id = dataId || '';
           if (!id && href) {
@@ -145,7 +147,11 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
           const price = parsePrice(priceText);
 
           let productUrl = href || (id ? `https://www.temu.com/goods.html?goods_id=${encodeURIComponent(id)}` : '');
-          if (!title || !image || /download-temu\.html/i.test(productUrl||'')) continue;
+
+          // фильтры против «скачайте приложение» и баннеров
+          if (!title || !image) continue;
+          if (looksBad(productUrl, title)) continue;
+          if (BAD_TITLE.test(title)) continue;
 
           results.push({ id: id || productUrl, title, price, image, productUrl });
           found++;
@@ -182,8 +188,13 @@ async function enrichDescriptions(page: Page, items: Item[], limit: number) {
   const targets = items.slice(0, limit);
   for (const it of targets) {
     try {
+      // не ходим на заведомо плохие урлы
+      if (looksBad(it.productUrl, it.title)) continue;
+
       await page.goto(it.productUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(()=>{});
+      if (BAD_URL.test(page.url())) continue;
+
       const desc = await page.evaluate(()=>{
         const meta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
         const txt = meta?.content || document.querySelector('[class*="desc"], [class*="description"]')?.textContent || '';
@@ -200,22 +211,20 @@ async function enrichDescriptions(page: Page, items: Item[], limit: number) {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// Main
-// ────────────────────────────────────────────────────────────────────────────────
+// ─── main ──────────────────────────────────────────────────────────────────────
 async function main() {
   const browser = await chromium.launch({ headless: CFG.scrape.headless !== false });
   const context = await browser.newContext({
+    // форсируем десктоп, чтобы не тащило на приложение
     ...devices['Desktop Chrome'],
-    locale: (CFG.scrape.locale || 'en-US'),
-    userAgent: devices['Desktop Chrome'].userAgent?.replace('Headless', '')
+    locale: "en-US",
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
   });
   const page = await context.newPage();
   await softHumanize(page);
 
-  // прочитать существующий архив безопасно
   let prev: Feed | null = readPrevFeed(OUT);
-
   const byCat: Record<string, Item[]> = {};
 
   for (const cat of CATS) {
@@ -226,6 +235,7 @@ async function main() {
 
       if (CFG.scrape.enrichDetails) await enrichDescriptions(page, newItems, CFG.scrape.enrichLimitPerRun || 30);
 
+      // аффилиатная ссылка
       const withAff = newItems.map(x => ({
         ...x,
         productUrl: withAffiliate(x.productUrl, CFG.affiliate)
