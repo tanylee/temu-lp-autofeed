@@ -1,3 +1,4 @@
+// scraper/temu_scraper.ts
 import fs from 'fs';
 import path from 'path';
 import { chromium, devices, Page } from '@playwright/test';
@@ -14,6 +15,67 @@ type Item = {
 };
 type Feed = { generatedAt: string; categories: { name: string; items: Item[] }[] };
 
+// ────────────────────────────────────────────────────────────────────────────────
+// Helpers (robust feed read + merge)
+// ────────────────────────────────────────────────────────────────────────────────
+function readPrevFeed(filePath: string): Feed | null {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8').trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+
+    // Если ранее файл был массивом товаров — приводим к новому формату
+    if (Array.isArray(parsed)) {
+      return { generatedAt: new Date().toISOString(), categories: [] };
+    }
+    if (parsed && Array.isArray(parsed.categories)) {
+      // Нормализуем items на случай битых значений
+      return {
+        generatedAt: parsed.generatedAt || new Date().toISOString(),
+        categories: parsed.categories.map((c: any) => ({
+          name: String(c?.name ?? ''),
+          items: Array.isArray(c?.items) ? c.items : []
+        }))
+      };
+    }
+    return { generatedAt: new Date().toISOString(), categories: [] };
+  } catch {
+    return null;
+  }
+}
+
+function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
+  const out: Feed = { generatedAt: new Date().toISOString(), categories: [] };
+
+  const prevMap: Record<string, Item[]> =
+    (prev && Array.isArray(prev.categories))
+      ? Object.fromEntries(prev.categories.map(c => [c.name, Array.isArray(c.items) ? c.items : []]))
+      : {};
+
+  for (const [name, freshRaw] of Object.entries(byCat)) {
+    const fresh = Array.isArray(freshRaw) ? freshRaw : [];
+    const existed = prevMap[name] || [];
+    const merged = uniqueBy([...fresh, ...existed], x => String(x.id));
+    out.categories.push({
+      name,
+      items: merged.slice(0, CFG.scrape.historyCapPerCategory || 100000)
+    });
+  }
+
+  // сохранить категории, которые не собирались в этот прогон
+  if (prev && Array.isArray(prev.categories)) {
+    for (const c of prev.categories) {
+      if (!out.categories.find(x => x.name === c.name)) {
+        out.categories.push({ name: c.name, items: Array.isArray(c.items) ? c.items : [] });
+      }
+    }
+  }
+  return out;
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Scraper
+// ────────────────────────────────────────────────────────────────────────────────
 async function waitForGoods(page: Page, timeout = 20000) {
   await page.waitForSelector('div[data-goods-id], div[data-sku-id], a[href*="goods_id"], a[href*="detail"] img', { timeout }).catch(()=>{});
 }
@@ -25,6 +87,7 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
   await page.waitForLoadState('networkidle', { timeout: cfg.scrape.timeoutMs }).catch(()=>{});
   await waitForGoods(page, 20000);
 
+  // если уводит на download-temu — повторяем заход
   if (/download-temu\.html/i.test(page.url())) {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: cfg.scrape.timeoutMs });
     await page.waitForLoadState('networkidle', { timeout: cfg.scrape.timeoutMs }).catch(()=>{});
@@ -48,7 +111,9 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
       for (const card of cards) {
         try {
           const dataId = await card.getAttribute('data-goods-id') || await card.getAttribute('data-sku-id');
-          let href = await card.getAttribute('href') || await card.evaluate((el:any)=> el.querySelector('a')?.getAttribute('href') || '');
+
+          let href = await card.getAttribute('href')
+            || await card.evaluate((el:any)=> el.querySelector('a')?.getAttribute('href') || '');
           if (href && !/^https?:/i.test(href)) href = new URL(href, page.url()).toString();
 
           let id = dataId || '';
@@ -135,27 +200,9 @@ async function enrichDescriptions(page: Page, items: Item[], limit: number) {
   }
 }
 
-function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
-  const out: Feed = { generatedAt: new Date().toISOString(), categories: [] };
-  const prevMap: Record<string, Item[]> =
-    prev ? Object.fromEntries(prev.categories.map(c => [c.name, c.items])) : {};
-
-  for (const [name, fresh] of Object.entries(byCat)) {
-    const existed = prevMap[name] || [];
-    const merged = uniqueBy([...fresh, ...existed], x => String(x.id));
-    out.categories.push({
-      name,
-      items: merged.slice(0, CFG.scrape.historyCapPerCategory || 100000)
-    });
-  }
-  if (prev) {
-    for (const c of prev.categories) {
-      if (!out.categories.find(x => x.name === c.name)) out.categories.push(c);
-    }
-  }
-  return out;
-}
-
+// ────────────────────────────────────────────────────────────────────────────────
+// Main
+// ────────────────────────────────────────────────────────────────────────────────
 async function main() {
   const browser = await chromium.launch({ headless: CFG.scrape.headless !== false });
   const context = await browser.newContext({
@@ -166,9 +213,8 @@ async function main() {
   const page = await context.newPage();
   await softHumanize(page);
 
-  // прочитать существующий архив
-  let prev: Feed | null = null;
-  try { prev = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch {}
+  // прочитать существующий архив безопасно
+  let prev: Feed | null = readPrevFeed(OUT);
 
   const byCat: Record<string, Item[]> = {};
 
