@@ -5,13 +5,13 @@ import { sleep, withAffiliate, parsePrice, uniqueBy, softHumanize } from './help
 
 const ROOT = path.resolve(__dirname, '..');
 const CFG   = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'settings.json'), 'utf8'));
-const CATS: {name: string; url: string;}[] = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'categories.json'), 'utf8'));
+const CATS: {name: string; url: string; aff?: string;}[] = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'categories.json'), 'utf8'));
 const OUT   = path.join(ROOT, 'data', 'products.json');
 
 type Item = { id: string; title: string; price: number | null; image: string; productUrl: string; description?: string; images?: string[]; };
 type Feed = { generatedAt: string; categories: { name: string; items: Item[] }[] };
 
-// safe read
+// ── safe read/merge (как раньше, укорочено) ────────────────────────────────────
 function readPrevFeed(filePath: string): Feed | null {
   try {
     const raw = fs.readFileSync(filePath, 'utf8').trim();
@@ -25,8 +25,6 @@ function readPrevFeed(filePath: string): Feed | null {
     return { generatedAt: new Date().toISOString(), categories: [] };
   } catch { return null; }
 }
-
-// merge
 function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
   const out: Feed = { generatedAt: new Date().toISOString(), categories: [] };
   const prevMap: Record<string, Item[]> =
@@ -47,37 +45,46 @@ function mergeIntoArchive(prev: Feed | null, byCat: Record<string, Item[]>) {
   return out;
 }
 
-// anti-app-redirect
+// ── анти-заглушки ─────────────────────────────────────────────────────────────
 const BAD_URL = /(download-temu\.html|play\.google\.com|apps\.apple\.com|itunes\.apple\.com)/i;
 const BAD_TITLE = /(google\s*play|app\s*store|shop on temu for exclusive offers)/i;
 const isGoodTemuUrl = (u: string) => { try { const h=new URL(u).host; return ((/\.temu\.com$/i.test(h)||/temu\.to$/i.test(h)) && !BAD_URL.test(u)); } catch { return false; } };
 const looksBad = (url?: string, title?: string) => (url && BAD_URL.test(url)) || (title && BAD_TITLE.test(title));
 
-// wait helpers
 async function waitForGoods(page: Page, timeout = 20000) {
-  await page.waitForSelector([
-    'div[data-goods-id]','div[data-sku-id]','a[href*="goods_id"]','a[href*="detail"]:has(img)'
-  ].join(','), { timeout }).catch(()=>{});
+  await page.waitForSelector(
+    'div[data-goods-id], div[data-sku-id], a[href*="goods_id"], a[href*="detail"]:has(img)',
+    { timeout }
+  ).catch(()=>{});
 }
 
-// scrape category
-async function scrapeCategory(page: Page, catName: string, url: string, cfg: any): Promise<Item[]> {
+// ── основная выборка ──────────────────────────────────────────────────────────
+async function scrapeCategory(page: Page, catName: string, url: string): Promise<Item[]> {
   const results: Item[] = [];
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: cfg.scrape.timeoutMs });
-  await page.waitForLoadState('networkidle', { timeout: cfg.scrape.timeoutMs }).catch(()=>{});
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CFG.scrape.timeoutMs });
+  await page.waitForLoadState('networkidle', { timeout: CFG.scrape.timeoutMs }).catch(()=>{});
   await waitForGoods(page, 20000);
+
   if (/download-temu\.html/i.test(page.url())) {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: cfg.scrape.timeoutMs });
-    await page.waitForLoadState('networkidle', { timeout: cfg.scrape.timeoutMs }).catch(()=>{});
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CFG.scrape.timeoutMs });
+    await page.waitForLoadState('networkidle', { timeout: CFG.scrape.timeoutMs }).catch(()=>{});
   }
 
-  const selectors = ['div[data-goods-id]','div[data-sku-id]','a[href*="goods_id"]','a[href*="detail"]:has(img)'];
+  const sels = [
+    'div[data-goods-id]',
+    'div[data-sku-id]',
+    'a[href*="goods_id"]',
+    'a[href*="detail"]:has(img)'
+  ];
+
   let pagesScraped = 0;
-  while (pagesScraped < (cfg.scrape.maxPagesPerCategory || 1)) {
+  while (pagesScraped < (CFG.scrape.maxPagesPerCategory || 1)) {
     let found = 0;
-    for (const sel of selectors) {
+
+    for (const sel of sels) {
       const cards = await page.$$(sel);
       if (!cards.length) continue;
+
       for (const card of cards) {
         try {
           const dataId = await card.getAttribute('data-goods-id') || await card.getAttribute('data-sku-id');
@@ -130,7 +137,7 @@ async function scrapeCategory(page: Page, catName: string, url: string, cfg: any
   return unique.slice(0, CFG.scrape.itemsPerCategoryCap || 9999);
 }
 
-// enrich
+// ── enrichment ────────────────────────────────────────────────────────────────
 async function enrichDescriptions(page: Page, items: Item[], limit: number) {
   const targets = items.slice(0, limit);
   for (const it of targets) {
@@ -156,33 +163,10 @@ async function enrichDescriptions(page: Page, items: Item[], limit: number) {
   }
 }
 
-// main
+// ── main ──────────────────────────────────────────────────────────────────────
 async function main() {
   const browser = await chromium.launch({ headless: CFG.scrape.headless !== false });
   const context = await browser.newContext({
     ...devices['Desktop Chrome'],
     locale: "en-US",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-    extraHTTPHeaders: { "accept-language": "en-US,en;q=0.9", "referer": "https://www.temu.com/", "sec-fetch-site": "same-origin" }
-  });
-  const page = await context.newPage();
-  await softHumanize(page);
-
-  let prev: Feed | null = readPrevFeed(OUT);
-  const byCat: Record<string, Item[]> = {};
-
-  for (const cat of CATS) {
-    console.log('Category:', cat.name);
-    try {
-      const items = await scrapeCategory(page, cat.name, cat.url, CFG);
-      const newItems = items.slice(0, CFG.scrape.maxNewItemsPerRunPerCategory || 20);
-      if (CFG.scrape.enrichDetails) await enrichDescriptions(page, newItems, CFG.scrape.enrichLimitPerRun || 30);
-      const withAff = newItems.map(x => ({ ...x, productUrl: withAffiliate(x.productUrl, CFG.affiliate) }));
-      byCat[cat.name] = withAff;
-      const [a,b] = CFG.scrape.sleepMsBetweenCats || [500,1500]; await sleep(Math.floor(a + Math.random()*(b-a)));
-    } catch (e) { console.error('Failed category', cat.name, e); byCat[cat.name] = []; }
-  }
-
-  const merged = mergeIntoArchive(prev, byCat);
-  fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  fs.writeFileSync(OUT, JSO
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
