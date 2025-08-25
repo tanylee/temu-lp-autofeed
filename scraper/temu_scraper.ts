@@ -5,13 +5,14 @@ import { sleep, withAffiliate, parsePrice, uniqueBy, softHumanize } from './help
 
 const ROOT = path.resolve(__dirname, '..');
 const CFG   = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'settings.json'), 'utf8'));
-const CATS: {name: string; url: string; aff?: string;}[] = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'categories.json'), 'utf8'));
+const CATS: {name: string; url: string; aff?: string;}[] =
+  JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'categories.json'), 'utf8'));
 const OUT   = path.join(ROOT, 'data', 'products.json');
 
 type Item = { id: string; title: string; price: number | null; image: string; productUrl: string; description?: string; images?: string[]; };
 type Feed = { generatedAt: string; categories: { name: string; items: Item[] }[] };
 
-// ── safe read/merge (как раньше, укорочено) ────────────────────────────────────
+// ── safe read/merge ───────────────────────────────────────────────────────────
 function readPrevFeed(filePath: string): Feed | null {
   try {
     const raw = fs.readFileSync(filePath, 'utf8').trim();
@@ -58,8 +59,8 @@ async function waitForGoods(page: Page, timeout = 20000) {
   ).catch(()=>{});
 }
 
-// ── основная выборка ──────────────────────────────────────────────────────────
-async function scrapeCategory(page: Page, catName: string, url: string): Promise<Item[]> {
+// ── сбор карточек ─────────────────────────────────────────────────────────────
+async function scrapeCategory(page: Page, url: string): Promise<Item[]> {
   const results: Item[] = [];
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CFG.scrape.timeoutMs });
   await page.waitForLoadState('networkidle', { timeout: CFG.scrape.timeoutMs }).catch(()=>{});
@@ -102,9 +103,14 @@ async function scrapeCategory(page: Page, catName: string, url: string): Promise
           )?.trim());
 
           let image = await card.evaluate((el:any)=>{
-            const img = el.querySelector('img'); const src = img?.getAttribute('src') || img?.getAttribute('data-src') || '';
-            if (src) return src; const styled = el.querySelector('[style*="background-image"]');
-            if (styled){ const m = /url\(["']?([^"')]+)["']?\)/.exec((styled as HTMLElement).getAttribute('style')||''); return m?.[1] || ''; }
+            const img = el.querySelector('img');
+            const src = img?.getAttribute('src') || img?.getAttribute('data-src') || '';
+            if (src) return src;
+            const styled = el.querySelector('[style*="background-image"]');
+            if (styled) {
+              const m = /url\(["']?([^"')]+)["']?\)/.exec((styled as HTMLElement).getAttribute('style')||'');
+              return m?.[1] || '';
+            }
             return '';
           });
           if (image && !/^https?:/i.test(image)) image = new URL(image, href || page.url()).toString();
@@ -137,8 +143,8 @@ async function scrapeCategory(page: Page, catName: string, url: string): Promise
   return unique.slice(0, CFG.scrape.itemsPerCategoryCap || 9999);
 }
 
-// ── enrichment ────────────────────────────────────────────────────────────────
-async function enrichDescriptions(page: Page, items: Item[], limit: number) {
+// ── обогащение ────────────────────────────────────────────────────────────────
+async function enrich(page: Page, items: Item[], limit: number) {
   const targets = items.slice(0, limit);
   for (const it of targets) {
     try {
@@ -169,4 +175,41 @@ async function main() {
   const context = await browser.newContext({
     ...devices['Desktop Chrome'],
     locale: "en-US",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    extraHTTPHeaders: { "accept-language": "en-US,en;q=0.9", "referer": "https://www.temu.com/", "sec-fetch-site": "same-origin" }
+  });
+  const page = await context.newPage();
+  await softHumanize(page);
+
+  const prev = readPrevFeed(OUT);
+  const byCat: Record<string, Item[]> = {};
+
+  for (const cat of CATS) {
+    console.log('Category:', cat.name);
+    try {
+      const fresh = await scrapeCategory(page, cat.url);
+      const newItems = fresh.slice(0, CFG.scrape.maxNewItemsPerRunPerCategory || 20);
+
+      if (CFG.scrape.enrichDetails) await enrich(page, newItems, CFG.scrape.enrichLimitPerRun || 30);
+
+      const perCatAff = cat.aff ? { baseRedirect: cat.aff, appendParams: CFG.affiliate.appendParams } : undefined;
+      const withAff = newItems.map(x => ({
+        ...x,
+        productUrl: withAffiliate(x.productUrl, CFG.affiliate, perCatAff)
+      }));
+      byCat[cat.name] = withAff;
+
+      const [a,b] = CFG.scrape.sleepMsBetweenCats || [500,1500];
+      await sleep(Math.floor(a + Math.random()*(b-a)));
+    } catch (e) {
+      console.error('Failed category', cat.name, e);
+      byCat[cat.name] = [];
+    }
+  }
+
+  const merged = mergeIntoArchive(prev, byCat);
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  fs.writeFileSync(OUT, JSON.stringify(merged, null, 2), 'utf8');
+  await browser.close();
+}
+main().catch(err => { console.error(err); process.exit(1); });
