@@ -1,14 +1,11 @@
 {
   "affiliate": {
     "baseRedirect": "https://temu.to/k/gd1pto8322c",
-    "appendParams": {
-      "utm_source": "pinterest",
-      "utm_campaign": "moodette"
-    }
+    "appendParams": { "utm_source": "pinterest", "utm_campaign": "moodette" }
   },
   "scrape": {
     "headless": true,
-    "locale": "en-US,en;q=0.9",
+    "locale": "en-US",
     "timeoutMs": 45000,
     "maxPagesPerCategory": 2,
     "itemsPerCategoryCap": 200,
