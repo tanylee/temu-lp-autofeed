@@ -1,4 +1,62 @@
 {
-  "generatedAt": "1970-01-01T00:00:00.000Z",
-  "categories": []
+  "generatedAt": "2025-08-25T03:36:52.876Z",
+  "categories": [
+    {
+      "name": "back to school",
+      "items": [
+        {
+          "id": "https://play.google.com/store/apps/details?id=com.einnovation.temu&gl=us",
+          "title": "Google Play",
+          "price": null,
+          "image": "https://aimg.kwcdn.com/upload_aimg/pc/427c29ba-bef6-439c-9d4c-edbdde47c7e0.png.slim.png?imageView2/2/w/120/q/70/format/webp",
+          "productUrl": "https://temu.to/k/gd1pto8322c?u=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dcom.einnovation.temu%26gl%3Dus%26utm_source%3Dpinterest%26utm_campaign%3Dmoodette",
+          "description": "Shop on Temu for exclusive offers",
+          "images": [
+            "https://fonts.gstatic.com/s/i/productlogos/avatar_anonymous/v4/web-32dp/logo_avatar_anonymous_color_1x_web_32dp.png",
+            "https://i.ytimg.com/vi/5Od0aOse1wc/hqdefault.jpg",
+            "https://play-lh.googleusercontent.com/9v08ai07I8aoFLj5M-90nzWPpvyNzOVgA2ZWF9avdW7oS8L9YqF9trVI44SUn2qGTA0=w240-h480-rw",
+            "https://play-lh.googleusercontent.com/9v08ai07I8aoFLj5M-90nzWPpvyNzOVgA2ZWF9avdW7oS8L9YqF9trVI44SUn2qGTA0=s48-rw",
+            "https://play-lh.googleusercontent.com/mw_NfsvKM8m6RPv8Fz2GQawCOsqWv010saMnc7zbWalMxuaA9IY8h7E0VMieLxSxAFB98NFeYqbFrXXq=w48-h16-rw",
+            "https://play-lh.googleusercontent.com/-RGlbZXgjNjbkbbAKSyXElJWbORxubz4WpxTvIs0sN2591wXvmPvWKPws4sAUmso3N81UhAOlko6fjJhuO42=w526-h296-rw"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "make up organizer",
+      "items": []
+    },
+    {
+      "name": "home decor",
+      "items": []
+    },
+    {
+      "name": "room decor",
+      "items": []
+    },
+    {
+      "name": "bathroom decor",
+      "items": []
+    },
+    {
+      "name": "tablewear",
+      "items": []
+    },
+    {
+      "name": "vases",
+      "items": []
+    },
+    {
+      "name": "candles",
+      "items": []
+    },
+    {
+      "name": "decorations",
+      "items": []
+    },
+    {
+      "name": "jewelry",
+      "items": []
+    }
+  ]
 }
