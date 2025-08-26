@@ -1,81 +1,254 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Moodette — Chic Edit</title>
-  <link rel="stylesheet" href="./public/styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Moodette — Your Chic Edit</title>
+  <meta name="description" content="Curated Temu picks: home decor, back to school, organizers, vases, candles, jewelry and more — updated automatically." />
+  <link rel="preconnect" href="https://raw.githubusercontent.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <style>
+    :root{
+      --bg:#faf9f8;--fg:#0f1720;--muted:#6b7280;--card:#ffffff;--brand:#111827;
+      --chip:#11182718;--chip-h:#11182725;--shadow:0 6px 24px rgba(0,0,0,.06);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;
+         color:var(--fg);background:var(--bg)}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px 16px 80px}
+    header{padding:24px 0 10px;text-align:center}
+    h1{font-size:44px;letter-spacing:.5px;margin:0 0 8px}
+    .lead{color:var(--muted);max-width:900px;margin:0 auto 22px;line-height:1.5}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:18px 0 8px}
+    .chip{padding:8px 12px;border-radius:999px;background:var(--chip);cursor:pointer;
+          border:1px solid transparent;user-select:none}
+    .chip[data-active="true"]{background:var(--brand);color:#fff}
+    .chip:hover{background:var(--chip-h)}
+    .search{width:min(520px,100%);border:1px solid #e5e7eb;border-radius:999px;padding:10px 14px}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    @media (max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}}
+    @media (max-width:720px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media (max-width:420px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;
+          display:flex;flex-direction:column;min-height:100%}
+    .thumb{aspect-ratio:1/1;object-fit:cover;width:100%;background:#f3f4f6}
+    .body{padding:12px 12px 14px;display:flex;flex-direction:column;gap:8px}
+    .title{font-weight:600;font-size:14px;line-height:1.35}
+    .muted{color:var(--muted);font-size:12px}
+    .price{font-weight:700}
+    .cta{margin-top:auto;text-decoration:none;background:#111827;color:#fff;padding:10px 12px;border-radius:10px;
+         text-align:center;font-weight:600}
+    .cta:hover{filter:brightness(1.05)}
+    .section{margin:32px 0 18px;display:flex;justify-content:space-between;align-items:center}
+    .section h2{margin:0;font-size:24px}
+    .count{color:var(--muted);font-size:14px}
+    .empty, .error{padding:48px 16px;text-align:center;color:var(--muted)}
+    .skeleton{background:linear-gradient(90deg,#f4f4f5 25%,#ececec 37%,#f4f4f5 63%);
+              background-size:400% 100%;animation:s 1.4s ease infinite}
+    @keyframes s{0%{background-position:100% 0}100%{background-position:0 0}}
+    .sk-card{height:260px;border-radius:var(--radius)}
+    footer{margin-top:48px;text-align:center;color:var(--muted);font-size:12px}
+    .pill{display:inline-flex;gap:6px;align-items:center;background:#11182710;padding:6px 10px;border-radius:999px}
+  </style>
 </head>
 <body>
-  <header class="hero">
-    <h1>Your Chic Edit</h1>
-    <p>From Pinterest-perfect room decor to trending lifestyle finds — curated picks that make your space stand out.</p>
-  </header>
+  <div class="wrap">
+    <header>
+      <h1>Your Chic Edit</h1>
+      <p class="lead">
+        From Pinterest-perfect room decor to trending lifestyle finds —
+        curated picks that make your space stand out. Auto-updated from Temu every few hours.
+      </p>
+      <div class="toolbar">
+        <input id="q" class="search" placeholder="Поиск по товарам… (название, категория)" />
+      </div>
+      <div id="chips" class="toolbar"></div>
+      <div style="text-align:center;margin-top:6px">
+        <span class="pill">Источник фида: <code id="srcLabel">data/products.json</code></span>
+      </div>
+    </header>
 
-  <nav id="tabs" class="tabs"></nav>
-  <main>
-    <div id="grid" class="grid"></div>
-    <button id="more" class="more" style="display:none">Show more</button>
-  </main>
+    <div id="content"></div>
+
+    <div id="err" class="error" style="display:none"></div>
+
+    <footer>
+      © <span id="y"></span> Moodette · Updated <span id="updated">—</span>
+    </footer>
+  </div>
 
   <script>
-  const FEED_URL = './data/products.json?ts=' + Date.now();
-  const PAGE_SIZE = 24;
-  const esc = s => String(s).replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const sources = [
+      // 1) локальный файл при деплое вместе с сайтом (Netlify/GitHub Pages)
+      "data/products.json",
+      // 2) GitHub RAW (мгновенно виден после коммита)
+      "https://raw.githubusercontent.com/tanylee/temu-lp-autofeed/main/data/products.json",
+      // 3) jsDelivr (иногда кэширует дольше, но как ещё один запасной)
+      "https://cdn.jsdelivr.net/gh/tanylee/temu-lp-autofeed@main/data/products.json"
+    ];
 
-  (async ()=>{
-    const tabs = document.getElementById('tabs');
-    const grid = document.getElementById('grid');
-    const more = document.getElementById('more');
-    grid.textContent = 'Loading…';
+    const state = {
+      data: null,
+      viewCat: "all",
+      q: ""
+    };
 
-    try{
-      const r = await fetch(FEED_URL, {cache:'no-cache'});
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      const feed = await r.json();
-
-      const cats = (feed.categories||[]).filter(c=>Array.isArray(c.items)&&c.items.length);
-      const params = new URLSearchParams(location.search);
-      let active = params.get('cat') || '';
-
-      tabs.innerHTML = cats.map(c=>{
-        const is = active ? c.name === active : false;
-        return `<a class="tab ${is?'active':''}" href="?cat=${encodeURIComponent(c.name)}">${esc(c.name)}</a>`;
-      }).join('') + (active ? `<a class="tab" href="?">All</a>` : '');
-
-      const pool = active ? cats.filter(c=>c.name===active) : cats;
-      const all = pool.flatMap(c => c.items.map(x => ({...x, _cat:c.name})));
-
-      grid.innerHTML = '';
-      let shown = 0;
-      const renderMore = ()=>{
-        const slice = all.slice(shown, shown + PAGE_SIZE);
-        const html = slice.map(p=>{
-          const price = (p.price && !isNaN(p.price)) ? ('$'+p.price) : '';
-          const desc = p.description ? `<div class="desc">${esc(p.description)}</div>` : '';
-          return `<a class="card" href="${p.productUrl}" target="_blank" rel="nofollow noopener">
-              <img loading="lazy" src="${p.image}" alt="${esc(p.title)}">
-              <div class="tx">
-                <div class="ti">${esc(p.title)}</div>
-                <div class="pr">${price}</div>
-                ${desc}
-                <div class="ct">${esc(p._cat||'')}</div>
-              </div>
-            </a>`;
-        }).join('');
-        grid.insertAdjacentHTML('beforeend', html);
-        shown += slice.length;
-        more.style.display = (shown < all.length) ? 'block' : 'none';
-      };
-
-      renderMore();
-      more.addEventListener('click', renderMore);
-      if (!all.length) grid.textContent = 'No items yet.';
-    }catch(e){
-      grid.innerHTML = '<b>Feed error.</b> Open Console (F12).';
-      console.error('[LP] feed error:', e);
+    // simple fetch with timeout and graceful fallback
+    async function fetchJsonWithFallback(urls, timeout=15000) {
+      const controller = new AbortController();
+      const id = setTimeout(()=>controller.abort(), timeout);
+      for (const u of urls) {
+        try {
+          const res = await fetch(u, { signal: controller.signal, cache: "no-store" });
+          if (res.ok) {
+            clearTimeout(id);
+            document.getElementById("srcLabel").textContent = u;
+            return await res.json();
+          }
+        } catch(e) { /* try next */ }
+      }
+      clearTimeout(id);
+      throw new Error("Не удалось загрузить фид из всех источников");
     }
-  })();
+
+    function fmtPrice(n){
+      if(n==null) return "";
+      try { return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n); }
+      catch { return "$" + n }
+    }
+
+    function unique(arr, keyFn){
+      const seen = new Set(); const out=[];
+      for(const it of arr){ const k=keyFn(it); if(!seen.has(k)){ seen.add(k); out.push(it); } }
+      return out;
+    }
+
+    function buildChips(categories){
+      const wrap = document.getElementById("chips");
+      wrap.innerHTML = "";
+      const all = document.createElement("div");
+      all.className = "chip";
+      all.textContent = "all";
+      all.dataset.active = (state.viewCat==="all");
+      all.onclick = () => { state.viewCat="all"; buildChips(categories); render(); };
+      wrap.appendChild(all);
+
+      for(const c of categories){
+        const chip = document.createElement("div");
+        chip.className = "chip";
+        chip.textContent = c.name;
+        chip.dataset.active = (state.viewCat===c.name);
+        chip.onclick = () => { state.viewCat=c.name; buildChips(categories); render(); };
+        wrap.appendChild(chip);
+      }
+    }
+
+    function render(){
+      const mount = document.getElementById("content");
+      const err = document.getElementById("err");
+      err.style.display = "none";
+      if(!state.data || !Array.isArray(state.data.categories)){
+        mount.innerHTML = `<div class="empty">Фид пустой</div>`;
+        return;
+      }
+
+      const term = state.q.trim().toLowerCase();
+      const cats = state.data.categories;
+
+      // what to show
+      const showCats = state.viewCat==="all" ? cats : cats.filter(c=>c.name===state.viewCat);
+
+      // clear
+      mount.innerHTML = "";
+      // sections
+      for(const cat of showCats){
+        const itemsRaw = Array.isArray(cat.items) ? cat.items : [];
+        // search
+        const items = itemsRaw.filter(x=>{
+          const hay = `${x.title||""} ${cat.name||""}`.toLowerCase();
+          return !term || hay.includes(term);
+        });
+
+        const section = document.createElement("section");
+        section.className = "section";
+        section.innerHTML = `<h2>${cat.name || "Category"}</h2>
+                             <div class="count">${items.length} items</div>`;
+        mount.appendChild(section);
+
+        const grid = document.createElement("div");
+        grid.className = "grid";
+        mount.appendChild(grid);
+
+        if(!items.length){
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "Ничего не найдено в этой категории";
+          grid.appendChild(empty);
+          continue;
+        }
+
+        for(const it of items){
+          const url = it.productUrl || "#";
+          const card = document.createElement("article");
+          card.className = "card";
+          card.innerHTML = `
+            <img class="thumb" loading="lazy" src="${it.image||""}" alt="${(it.title||"").replace(/"/g,'&quot;')}">
+            <div class="body">
+              <div class="title">${it.title||"—"}</div>
+              <div class="muted">${it.description ? it.description : ""}</div>
+              <div class="price">${fmtPrice(it.price)}</div>
+              <a class="cta" href="${url}" target="_blank" rel="noopener">Shop on Temu</a>
+            </div>`;
+          grid.appendChild(card);
+        }
+      }
+    }
+
+    async function init(){
+      // skeletons
+      const content = document.getElementById("content");
+      const sk = document.createElement("div");
+      sk.className = "grid";
+      for(let i=0;i<8;i++){
+        const c = document.createElement("div");
+        c.className = "skeleton sk-card";
+        sk.appendChild(c);
+      }
+      content.appendChild(sk);
+
+      try{
+        const data = await fetchJsonWithFallback(sources);
+        // normalize: старые/пустые структуры
+        const norm = {
+          generatedAt: data.generatedAt || new Date().toISOString(),
+          categories: Array.isArray(data.categories) ? data.categories.map(c=>({
+            name: String(c?.name ?? ""),
+            items: Array.isArray(c?.items) ? unique(c.items, x=>String(x.id||x.productUrl||Math.random())) : []
+          })) : []
+        };
+        state.data = norm;
+        // header info
+        document.getElementById("updated").textContent =
+          new Date(norm.generatedAt).toLocaleString();
+        document.getElementById("y").textContent = new Date().getFullYear();
+
+        buildChips(norm.categories);
+        render();
+      }catch(e){
+        document.getElementById("err").style.display = "block";
+        document.getElementById("err").textContent = "Ошибка загрузки фида. Открой консоль (F12) → Console.";
+        console.error(e);
+      }
+    }
+
+    // search binding
+    document.getElementById("q").addEventListener("input", (e)=>{
+      state.q = e.target.value || "";
+      render();
+    });
+
+    init();
   </script>
 </body>
 </html>
