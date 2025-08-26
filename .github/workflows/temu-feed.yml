@@ -2,30 +2,23 @@ name: Temu Auto Feed (3h)
 
 on:
   schedule:
-    - cron: "0 */3 * * *"
-  workflow_dispatch: {}
-
-concurrency:
-  group: temu-feed-main
-  cancel-in-progress: false
+    - cron: "0 */3 * * *"   # запуск каждые 3 часа
+  workflow_dispatch: {}      # запуск вручную тоже
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           npm ci || npm i
           npx playwright install --with-deps chromium
@@ -33,25 +26,10 @@ jobs:
       - name: Run scraper
         run: npx ts-node scraper/temu_scraper.ts
 
-      - name: Configure git
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Pull latest with rebase
-        run: |
-          git fetch origin ${GITHUB_REF_NAME}
-          git pull --rebase origin ${GITHUB_REF_NAME} || true
-
       - name: Commit & push feed
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/products.json
-          git commit -m "chore(feed): refresh $(date -u +'%Y-%m-%dT%H:%M:%SZ')" || echo "No changes"
-          git push origin ${GITHUB_REF_NAME} || {
-            git pull --rebase origin ${GITHUB_REF_NAME} || true
-            git push origin ${GITHUB_REF_NAME}
-          }
-
-      - name: Trigger Netlify build
-        if: ${{ secrets.NETLIFY_BUILD_HOOK_URL != '' }}
-        run: curl -s -X POST -d '{}' "${{ secrets.NETLIFY_BUILD_HOOK_URL }}"
+          git commit -m "auto: feed update" || echo "No changes to commit"
+          git push
