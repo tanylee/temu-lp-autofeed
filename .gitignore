@@ -1,15 +1,12 @@
-# Игнорировать node_modules
 node_modules/
-
-# Игнорировать временные файлы системы
 .DS_Store
 
-# Игнорировать логи
+# logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Игнорировать артефакты билда
+# build artifacts (если появятся)
 dist/
 build/
