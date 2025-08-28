@@ -2,12 +2,16 @@ name: Build feed from my links
 
 on:
   workflow_dispatch: {}
+  # Если нужно автообновление по расписанию — раскомментируй:
+  # schedule:
+  #   - cron: "0 */3 * * *"   # каждые 3 часа
 
-# чтобы не шли параллельные раны и не мешали друг другу
+# чтобы параллельные запуски не мешали друг другу
 concurrency:
   group: manual-feed
-  cancel-in-progress: true
+  cancel-in-progress: false
 
+# даём экшену право коммитить в репозиторий
 permissions:
   contents: write
 
@@ -19,39 +23,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # важно для pull --rebase
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: "npm"
 
       - name: Install deps
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+        run: npm ci
 
-      - name: Parse my links (auto-categorize)
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # парсит data/manual_products.csv -> data/products.json
+      - name: Parse manual links
         run: npx ts-node scripts/parse_manual.ts
 
-      - name: Commit & force-push feed
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # ✅ ключевой шаг: подтянуть последние изменения перед пушем,
+      # чтобы не было ошибки "rejected (fetch first)"
+      - name: Commit & push feed (with rebase)
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # добавляем только то, что нам нужно
-          git add data/products.json data/_errors.json 2>/dev/null || true
+          git add data/products.json
+          git commit -m "feed: update from manual links" || echo "No changes to commit"
 
-          if git diff --cached --quiet; then
-            echo "Nothing to commit."
+          # если нечего пушить — выходим
+          if [ -z "$(git diff --cached --name-only)" ]; then
+            echo "No staged changes. Skip push."
             exit 0
           fi
 
-          # [skip ci] чтобы не гонять лишние воркфлоу/деплои, если не нужно
-          git commit -m "feed: update from manual links [skip ci]"
+          # тянем последнее и кладём наш коммит поверх
+          git pull --rebase origin main || true
 
-          # форс-пушим поверх main (без pull)
-          # --force-with-lease безопаснее обычного --force
-          git push --force-with-lease origin HEAD:main
+          # пушим
+          git push origin main
