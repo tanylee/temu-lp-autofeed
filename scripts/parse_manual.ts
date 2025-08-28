@@ -22,24 +22,27 @@ const RULES_PATH = path.join(ROOT, "config", "rules.json");
 
 // ————— helpers —————
 function readCSV(): CsvRow[] {
-  const src = fs.readFileSync(CSV, "utf8").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const header = src[0].toLowerCase();
+  const raw = fs.readFileSync(CSV, "utf8");
+  const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const header = lines[0].toLowerCase();
   const rows: CsvRow[] = [];
+
+  // поддерживаем два формата: "url" и "url,category" (порядок столбцов не важен)
   if (header.includes(",")) {
-    // формат: url,category (порядок не важен)
     const cols = header.split(",").map(s => s.trim());
     const idxUrl = cols.findIndex(c => c === "url");
     const idxCat = cols.findIndex(c => c === "category");
-    for (const line of src.slice(1)) {
+    for (const line of lines.slice(1)) {
+      if (line.startsWith("#")) continue;
       const parts = line.split(",");
       const url = (parts[idxUrl] || "").trim();
       const category = idxCat >= 0 ? (parts[idxCat] || "").trim() : "";
       if (url) rows.push({ url, category });
     }
   } else {
-    // формат: только url
-    for (const line of src) {
-      if (line.startsWith("#") || line==="url") continue;
+    for (const line of lines) {
+      if (line === "url" || line.startsWith("#")) continue;
       rows.push({ url: line });
     }
   }
@@ -48,7 +51,7 @@ function readCSV(): CsvRow[] {
 
 function loadRules(): Rules {
   if (fs.existsSync(RULES_PATH)) {
-    return JSON.parse(fs.readFileSync(RULES_PATH, "utf8"));
+    try { return JSON.parse(fs.readFileSync(RULES_PATH, "utf8")); } catch {}
   }
   return {};
 }
@@ -61,13 +64,13 @@ function parsePriceText(t?: string): number | null {
 
 function categorize(text: string, rules: Rules): string {
   const hay = text.toLowerCase();
-  let bestCat = "Misc";
-  let bestHits = 0;
+  let best = "Misc";
+  let hitsBest = 0;
   for (const [cat, keywords] of Object.entries(rules)) {
     const hits = keywords.reduce((acc, k) => acc + (hay.includes(k.toLowerCase()) ? 1 : 0), 0);
-    if (hits > bestHits) { bestHits = hits; bestCat = cat; }
+    if (hits > hitsBest) { hitsBest = hits; best = cat; }
   }
-  return bestCat;
+  return best;
 }
 
 async function extract(page, url: string) {
@@ -75,8 +78,7 @@ async function extract(page, url: string) {
   await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(()=>{});
   const finalUrl = page.url();
 
-  const title =
-    (await page.locator("h1").first().textContent().catch(()=> ""))?.trim() || "";
+  const title = (await page.locator("h1").first().textContent().catch(()=> ""))?.trim() || "";
 
   const priceText =
     (await page.locator('[data-price], [class*="price"], .price').first().textContent().catch(()=> "")) || "";
@@ -107,7 +109,10 @@ async function extract(page, url: string) {
     ).catch(()=> [])) || [];
 
   let id = "";
-  try { const u = new URL(finalUrl); id = u.searchParams.get("goods_id") || u.searchParams.get("sku_id") || ""; } catch {}
+  try {
+    const u = new URL(finalUrl);
+    id = u.searchParams.get("goods_id") || u.searchParams.get("sku_id") || "";
+  } catch {}
   if (!id) id = finalUrl;
 
   return { id, title, price, image: image || images[0] || "", description, crumbs, images };
@@ -123,11 +128,12 @@ async function main() {
   const ctx = await browser.newContext({
     ...devices["Desktop Chrome"],
     locale: "en-US",
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
   });
 
   const byCat: Record<string, Item[]> = {};
-  const concurrency = 8;                    // парсим пачками (8 параллельно)
+  const concurrency = 8; // параллельно
   let i = 0;
 
   while (i < rows.length) {
@@ -140,6 +146,7 @@ async function main() {
         try {
           const p = await extract(page, row.url);
           if (!p.title || !p.image) throw new Error("no title/image");
+
           const textForRules = [p.title, p.description, p.crumbs].join(" • ");
           const autoCat = categorize(textForRules, rules);
           const category = row.category?.trim() || autoCat;
@@ -149,7 +156,7 @@ async function main() {
             title: p.title,
             price: p.price ?? null,
             image: p.image,
-            url: row.url,                  // твоя партнёрская ссылка
+            url: row.url, // <-- сохраняем твою партнёрскую ссылку
             category,
             description: (p.description || "").replace(/\s+/g, " ").slice(0, 200),
             images: p.images || []
