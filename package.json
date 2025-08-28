@@ -1,19 +1,10 @@
 {
-  "name": "temu-lp-autofeed",
-  "version": "1.0.0",
-  "private": true,
-  "type": "commonjs",
   "scripts": {
-    "install:pw": "npx playwright install --with-deps chromium",
-    "scrape": "ts-node scraper/temu_scraper.ts",
-    "build": "tsc",
-    "start": "node dist/scraper/temu_scraper.js"
-  },
-  "dependencies": {
-    "@playwright/test": "^1.47.2"
+    "feed:links": "ts-node scripts/parse_manual.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.46.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.4.0"
   }
 }
