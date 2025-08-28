@@ -1,0 +1,15 @@
+# Игнорировать node_modules
+node_modules/
+
+# Игнорировать временные файлы системы
+.DS_Store
+
+# Игнорировать логи
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Игнорировать артефакты билда
+dist/
+build/
