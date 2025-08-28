@@ -1,0 +1,429 @@
+{
+  "count": 106,
+  "errors": [
+    {
+      "url": "url",
+      "error": "page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL\nCall log:\n  - navigating to \"url\", waiting until \"domcontentloaded\"\n"
+    },
+    {
+      "url": "https://temu.to/k/gpjtt5i5v8n",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g8pc0hz6h74",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/ge2ps6bbm00",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/geljndvlqlv",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gulwz8w716f",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gajz8xcl9fm",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g82aujzlaq7",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gjmbg7id6yv",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gmhbkxofzjs",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gqx2h8kt6p6",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g9uansrjb5s",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gfeby6g4fne",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g98ef9pshsw",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/ge21z6tpn6e",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gnrfs0u4whu",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g8jr334lo6a",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gsw3q24bwwp",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gez5if3altu",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g9bqgomjpe8",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gtusq9hr7dj",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gd4pxid2mm8",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gzt941ridxo",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gdcgamsf3rz",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gz6llb3902l",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g4pp4i5m0r1",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gx8klqa8jb3",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g947yooxa8v",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/ggeza5elh6x",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gnvhsxwn6nv",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g085axf0dti",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gq3qd7ac63e",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/glz28kw0kh5",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gkd00cp6zw1",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g4a8vznyprn",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g8ygcmtkott",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g9jrsm85zj4",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g3qslhui0a1",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gtvrqhhy7jt",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/ga1ipwd108i",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g34zflb5tua",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g8dlicuirkf",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gni3yxdr7d8",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gsfzxxqynph",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gee4p5uogbv",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g8mfzg773ni",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gxb0zqyifxb",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gcadn5cjg63",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gkcyikt86ft",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g3sv7boxtg1",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gvc5qw629sd",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gpeeywtd2x1",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/ggrk5ycf9z4",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gtbxqxksrd3",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gm83wlg2z7d",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gduq8dwehg2",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/grqkfnxfsci",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gx4155igsz3",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gkslph6r47a",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gacmeemsy9p",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gj2fj4nid2v",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gjdptb0k1v8",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gd89a1p3myx",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gbvc2j9tobs",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gql6tkyr5gh",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gii45igae4f",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g5thetcwm04",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g2t1le8s20l",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g9ksjfmkyom",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gpgrrlsm5cu",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gz88m5skmx8",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g0uz6t781uo",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/grl9znak6ej",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gwnfzu39t1z",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g8plfdy9hax",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gt1f2jix9jl",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gsqzs2d0owj",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gq3iuacw9rh",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gl2al85odjz",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gtjcpm3o2vj",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gojg1x7jq3x",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gslkby7peyy",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g7biphkxrvd",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gfiq15pxxc5",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/grq1e2npzwa",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gn5g80ub5kq",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gbwu9izbkwi",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gfk3w3ozca0",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gqwu57dpare",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gs5j0uulyfp",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gdkoh8g0f8v",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gnr7gpis85y",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g8va2p6b06e",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gqe3hltxnuz",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gkctylmnzkq",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g5vr03qsq6s",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gavvofh76rc",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gdctke1akuf",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gb3mmcmcxio",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gzd4wbf89ow",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g61q2hf4xru",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gabrt5vispo",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gwv12q0wu6l",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/grol7jz7lba",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/g4ifdoe936o",
+      "error": "no title/image"
+    },
+    {
+      "url": "https://temu.to/k/gm6lj8rqxgf",
+      "error": "no title/image"
+    }
+  ]
+}
