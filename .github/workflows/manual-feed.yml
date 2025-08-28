@@ -3,30 +3,55 @@ name: Build feed from my links
 on:
   workflow_dispatch: {}
 
+# чтобы не шли параллельные раны и не мешали друг другу
+concurrency:
+  group: manual-feed
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install deps
         run: |
-          npm ci || npm i
+          npm ci
           npx playwright install --with-deps chromium
 
       - name: Parse my links (auto-categorize)
         run: npx ts-node scripts/parse_manual.ts
 
-      - name: Commit & push feed
+      - name: Commit & force-push feed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/products.json
-          git commit -m "feed: update from manual links" || echo "no changes"
-          git push
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # добавляем только то, что нам нужно
+          git add data/products.json data/_errors.json 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+
+          # [skip ci] чтобы не гонять лишние воркфлоу/деплои, если не нужно
+          git commit -m "feed: update from manual links [skip ci]"
+
+          # форс-пушим поверх main (без pull)
+          # --force-with-lease безопаснее обычного --force
+          git push --force-with-lease origin HEAD:main
