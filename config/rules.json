@@ -1,0 +1,12 @@
+{
+  "back to school": ["back to school", "school", "student", "stationery", "organizer school"],
+  "make up organizer": ["makeup", "cosmetic", "make up", "beauty", "vanity", "organizer"],
+  "home decor": ["home decor", "wall art", "throw pillow", "rug", "tapestry", "poster", "frame"],
+  "room decor": ["room decor", "bedroom", "living room", "sofa", "blanket", "wall clock"],
+  "bathroom decor": ["bathroom", "toilet", "bath", "shower", "soap", "towel", "toothbrush"],
+  "tablewear": ["tableware", "table wear", "cutlery", "fork", "knife", "spoon", "plate", "bowl", "cup", "mug"],
+  "vases": ["vase", "ceramic vase", "glass vase"],
+  "candles": ["candle", "tealight", "aroma", "scent"],
+  "decorations": ["decoration", "garland", "ornament", "figurine", "centerpiece", "artificial flower"],
+  "jewelry": ["jewelry", "ring", "necklace", "earring", "bracelet", "pendant", "choker", "stud"]
+}
