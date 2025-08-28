@@ -1,264 +1,260 @@
+// scripts/parse_manual.ts
 import fs from "fs";
 import path from "path";
-import { chromium, devices } from "@playwright/test";
+import { chromium, Browser, Page } from "playwright";
+import { parse } from "csv-parse/sync";
 
-// ---------------- paths & types ----------------
-type Rules = Record<string, string[]>;
-type CsvRow = { url: string; category?: string };
-type Item = {
-  id: string;
+// ---- настройки ----
+const CSV = "data/manual_products.csv";      // твой список ссылок
+const OUT = "data/products.json";            // финальный фид
+const MAX_ITEMS = 200;                       // ограничитель, если надо
+
+// Десктопный UA, чтобы Temu не уводил в "Install app"
+const DESKTOP_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
+type FeedItem = {
+  product_id: string;
   title: string;
-  price: number | null;
-  image: string;
-  url: string;        // твоя партнёрская ссылка
-  category: string;
-  description?: string;
-  images?: string[];
+  price: number | string;
+  main_image: string;
+  images: string[];
+  url: string;        // = view_url
+  link_out: string;   // твоя партнёрка
+  in_stock: boolean;
+  last_seen: string;
+  category?: string;
 };
 
-const ROOT = path.resolve(__dirname, "..");
-const CSV = path.join(ROOT, "data", "manual_products.csv");
-const OUT = path.join(ROOT, "data", "products.json");
-const RULES_PATH = path.join(ROOT, "config", "rules.json");
-const ERR = path.join(ROOT, "data", "_errors.json");
-
-// ---------------- helpers ----------------
-function readCSV(): CsvRow[] {
-  const raw = fs.readFileSync(CSV, "utf8");
-  const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-
-  // поддерживаем:
-  // 1) шапка `url` + много ссылок
-  // 2) шапка `url,category`
-  if (/^url(,|$)/i.test(lines[0])) {
-    const header = lines[0].split(",").map(s => s.trim().toLowerCase());
-    const idxUrl = header.indexOf("url");
-    const idxCat = header.indexOf("category");
-    const rows: CsvRow[] = [];
-    for (const line of lines.slice(1)) {
-      if (!line || line.startsWith("#")) continue;
-      const parts = line.split(",");
-      const url = (parts[idxUrl] || "").trim();
-      const category = idxCat >= 0 ? (parts[idxCat] || "").trim() : "";
-      if (url) rows.push({ url, category });
-    }
-    return rows;
-  } else {
-    // без шапки — считаем, что весь файл это просто ссылки
-    return lines
-      .filter(s => !s.startsWith("#"))
-      .map(url => ({ url }));
-  }
+function ensureDir(p: string) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
 }
 
-function loadRules(): Rules {
+// Пытаемся вытащить goods_id из любого URL
+function extractGoodsId(u: string): string | null {
   try {
-    if (fs.existsSync(RULES_PATH)) {
-      return JSON.parse(fs.readFileSync(RULES_PATH, "utf8"));
+    const url = new URL(u);
+
+    // 1) goods.html?goods_id=...
+    const gid = url.searchParams.get("goods_id");
+    if (gid) return gid;
+
+    // 2) SEO-формат ...-p-<goods_id>.html
+    const m = url.pathname.match(/-p-(\d+)\.html$/);
+    if (m) return m[1];
+
+    // 3) Если это download-temu.html?target_url=<encoded>
+    const target = url.searchParams.get("target_url");
+    if (target) {
+      try {
+        const dec = decodeURIComponent(target);
+        return extractGoodsId(dec);
+      } catch {}
     }
-  } catch {}
-  return {};
-}
 
-function parsePriceText(t?: string): number | null {
-  if (!t) return null;
-  const n = Number(String(t).replace(/[^\d.,]/g, "").replace(",", "."));
-  return isFinite(n) ? n : null;
-}
+    // 4) Иногда temuto редиректит на kwcdn с параметром, внутри которого есть goods_id
+    const whole = u;
+    const m2 = whole.match(/goods_id=(\d{6,})/);
+    if (m2) return m2[1];
 
-function categorize(text: string, rules: Rules): string {
-  const hay = text.toLowerCase();
-  let best = "Misc";
-  let score = 0;
-  for (const [cat, keys] of Object.entries(rules)) {
-    const s = keys.reduce((acc, k) => acc + (hay.includes(k.toLowerCase()) ? 1 : 0), 0);
-    if (s > score) { score = s; best = cat; }
-  }
-  return best;
-}
-
-// Разворачиваем короткий temu.to до конечного URL
-async function resolveTemu(url: string): Promise<string> {
-  try {
-    const res = await fetch(url, { redirect: "follow" as RequestRedirect });
-    // если fetch не кинул — берём финальный URL
-    return res.url || url;
+    return null;
   } catch {
-    return url;
+    return null;
   }
 }
 
-// Пытаемся закрыть все частые попапы Temu
-async function dismissDialogs(page) {
-  const selectors = [
-    '#onetrust-accept-btn-handler',               // cookies
-    'button:has-text("Accept")',
-    'button:has-text("I agree")',
-    'button:has-text("Continue")',
-    'button:has-text("×")',
-    '[class*="close"] button',
-    'button[aria-label="Close"]'
-  ];
-  for (const sel of selectors) {
+function buildViewUrl(goodsId: string) {
+  return `https://www.temu.com/goods.html?goods_id=${goodsId}`;
+}
+
+// читаем CSV: можно два формата:
+//  a) url
+//  b) category,url
+function readLinks(): { url: string; category?: string }[] {
+  const raw = fs.readFileSync(CSV, "utf8");
+  const rows = parse(raw, {
+    columns: true,
+    skip_empty_lines: true,
+    comment: "#",
+    trim: true,
+  }) as any[];
+
+  const hasCategory = "category" in rows[0];
+  return rows
+    .map((r) => ({
+      url: (r.url || r.URL || r.link || "").trim(),
+      category: hasCategory ? (r.category || r.Category || "").trim() : undefined,
+    }))
+    .filter((r) => r.url);
+}
+
+async function openWithDesktop(page: Page, url: string) {
+  await page.setExtraHTTPHeaders({
+    "accept-language": "en-US,en;q=0.9",
+  });
+  await page.setUserAgent(DESKTOP_UA);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+}
+
+async function resolveToViewUrl(page: Page, shortOrLongUrl: string): Promise<{ viewUrl: string; goodsId: string } | null> {
+  // если это уже веб-URL и goods_id виден — берём его
+  const quick = extractGoodsId(shortOrLongUrl);
+  if (quick) {
+    return { viewUrl: buildViewUrl(quick), goodsId: quick };
+  }
+
+  // иначе идём в браузере (на десктопном UA) и берём итоговый URL
+  await openWithDesktop(page, shortOrLongUrl);
+  let finalUrl = page.url();
+
+  // Temu иногда кидает на download-temu.html — извлекаем target_url
+  let gid = extractGoodsId(finalUrl);
+  if (!gid) {
+    // бывают промежуточные редиректы — пробуем дождаться ещё одной навигации
     try {
-      const el = page.locator(sel).first();
-      if (await el.isVisible({ timeout: 1000 }).catch(()=>false)) {
-        await el.click({ timeout: 1000 }).catch(()=>{});
+      const resp = await page.waitForNavigation({ timeout: 5000 });
+      if (resp) finalUrl = page.url();
+    } catch {}
+    gid = extractGoodsId(finalUrl);
+  }
+
+  if (!gid) return null;
+  return { viewUrl: buildViewUrl(gid), goodsId: gid };
+}
+
+// вытаскиваем данные о товаре из страницы (название, цену, фото)
+// стратегия: сначала JSON-LD, затем window.__INIT_STATE__ как fallback
+async function scrapeProduct(page: Page, viewUrl: string) {
+  await openWithDesktop(page, viewUrl);
+
+  // Попытка 1: JSON-LD schema.org/Product
+  const ld = await page.$$eval('script[type="application/ld+json"]', (nodes) => {
+    try {
+      for (const n of nodes) {
+        const j = JSON.parse(n.textContent || "{}");
+        if (j["@type"] === "Product") return j;
+        if (Array.isArray(j)) {
+          const p = j.find((x) => x["@type"] === "Product");
+          if (p) return p;
+        }
       }
     } catch {}
-  }
-}
-
-async function grabProduct(page) {
-  // h1 / title
-  const title =
-    (await page.locator('h1,[data-testid*="title"]').first().textContent().catch(()=> ""))?.trim() || "";
-
-  // price candidates
-  const priceText =
-    (await page.locator('[data-testid*="price"], [class*="price"], .price').first().textContent().catch(()=> "")) || "";
-  const price = parsePriceText(priceText);
-
-  // description meta
-  const description =
-    (await page.evaluate(() =>
-      (document.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content || ""
-    ).catch(()=> "")) || "";
-
-  // primary image
-  const primary =
-    (await page.evaluate(() => {
-      const pick = (el: Element | null) =>
-        (el as HTMLImageElement)?.getAttribute("src") ||
-        (el as HTMLImageElement)?.getAttribute("data-src") || "";
-      const cands = [
-        document.querySelector('img[alt][src^="http"]'),
-        document.querySelector('img[src^="http"]')
-      ];
-      for (const c of cands) {
-        const u = pick(c);
-        if (u) return u;
-      }
-      return "";
-    }).catch(()=> "")) || "";
-
-  const images: string[] =
-    (await page.evaluate(() =>
-      Array.from(document.querySelectorAll("img"))
-        .map((i:any) => i.getAttribute("src") || i.getAttribute("data-src") || "")
-        .filter(u => /^https?:\/\//.test(u))
-        .slice(0, 8)
-    ).catch(()=> [])) || [];
-
-  // id из url
-  let id = "";
-  try {
-    const u = new URL(page.url());
-    id = u.searchParams.get("goods_id") || u.searchParams.get("sku_id") || "";
-  } catch {}
-  if (!id) id = page.url();
-
-  return { id, title, price, image: primary || images[0] || "", description, images };
-}
-
-// ---------------- main ----------------
-async function main() {
-  const rules = loadRules();
-  const rows = readCSV();
-  if (!rows.length) throw new Error("В data/manual_products.csv нет ссылок");
-
-  const browser = await chromium.launch({ headless: true });
-  const ctx = await browser.newContext({
-    ...devices["Desktop Chrome"],
-    locale: "en-US",
-    viewport: { width: 1366, height: 900 },
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    return null;
   });
 
-  const byCat: Record<string, Item[]> = {};
-  const errors: any[] = [];
+  let title = "";
+  let price: any = "";
+  let images: string[] = [];
 
-  // распараллелим
-  const pool = 6;
-  for (let i = 0; i < rows.length; i += pool) {
-    const batch = rows.slice(i, i + pool);
-
-    const res = await Promise.allSettled(batch.map(async (r) => {
-      const page = await ctx.newPage();
-      const partnerUrl = r.url.trim();
-
-      try {
-        const final = await resolveTemu(partnerUrl);
-        // если нас унесло на download-temu.html — всё равно открываем, но будем ждать реального контента
-        await page.goto(final, { waitUntil: "domcontentloaded", timeout: 60000 });
-        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(()=>{});
-
-        await dismissDialogs(page);
-
-        // если внезапно показали только app-страницу — пробуем кликнуть «Continue in browser»
-        const appBtn = page.locator('a:has-text("Continue")').first();
-        if (await appBtn.isVisible({ timeout: 1000 }).catch(()=>false)) {
-          await appBtn.click().catch(()=>{});
-          await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(()=>{});
-          await dismissDialogs(page);
-        }
-
-        // ждём наличия чего-то похожего на карточку
-        await page.waitForSelector('h1,[data-testid*="title"], img[src^="http"]', { timeout: 12000 }).catch(()=>{});
-
-        const p = await grabProduct(page);
-        if (!p.title || !p.image) throw new Error("no title/image");
-
-        const text = [p.title, p.description].join(" • ");
-        const cat = r.category?.trim() || categorize(text, rules);
-
-        const item: Item = {
-          id: String(p.id),
-          title: p.title,
-          price: p.price,
-          image: p.image,
-          url: partnerUrl,         // сохраняем твою партнёрскую ссылку
-          category: cat,
-          description: (p.description || "").replace(/\s+/g, " ").slice(0, 200),
-          images: p.images
-        };
-
-        byCat[item.category] ??= [];
-        if (!byCat[item.category].some(x => x.id === item.id)) {
-          byCat[item.category].push(item);
-        }
-      } catch (e: any) {
-        errors.push({ url: partnerUrl, error: String(e?.message || e) });
-      } finally {
-        await page.close().catch(()=>{});
-      }
-    }));
-
-    // подсказка в лог
-    const ok = res.filter(x => x.status === "fulfilled").length;
-    const fail = res.length - ok;
-    console.log(`batch done: ok=${ok} fail=${fail}`);
+  if (ld) {
+    title = ld.name || "";
+    if (ld.offers?.price) price = ld.offers.price;
+    if (Array.isArray(ld.image)) images = ld.image;
+    else if (ld.image) images = [ld.image];
   }
 
-  await ctx.close(); await browser.close();
+  // Попытка 2: window.__INIT_STATE__ / __NUXT__ / другие глобалы
+  if (!title || !price || images.length === 0) {
+    const raw = await page.content();
+    // простые регулярки без завязки на конкретный фреймворк
+    const t = title || (raw.match(/"title"\s*:\s*"([^"]{3,})"/)?.[1] ?? "");
+    const p =
+      price ||
+      raw.match(/"price"\s*:\s*(\d+(\.\d+)?)/)?.[1] ||
+      raw.match(/"min_price"\s*:\s*(\d+(\.\d+)?)/)?.[1] ||
+      "";
+    const imgs = images.length
+      ? images
+      : Array.from(
+          new Set(
+            Array.from(raw.matchAll(/https?:\/\/[^"]+\.(?:jpe?g|png|webp)/gi)).map(
+              (m) => m[0]
+            )
+          )
+        ).slice(0, 8);
+
+    title = t || title;
+    price = p || price;
+    images = imgs;
+  }
+
+  // в качестве main_image берём первую
+  const main_image = images[0] || "";
+  return { title, price, images, main_image };
+}
+
+async function run() {
+  const links = readLinks().slice(0, MAX_ITEMS);
+  if (links.length === 0) {
+    console.warn("manual_products.csv пуст!");
+    return;
+  }
+
+  const browser: Browser = await chromium.launch({ headless: true });
+  const page: Page = await browser.newPage();
+
+  const items: FeedItem[] = [];
+
+  for (const row of links) {
+    const link_out = row.url.trim(); // партнёрка остаётся как есть
+
+    // 1) Разворачиваем до view_url
+    const resolved = await resolveToViewUrl(page, link_out);
+    if (!resolved) {
+      console.warn("Пропуск (не нашли goods_id):", link_out);
+      continue;
+    }
+
+    const { viewUrl, goodsId } = resolved;
+
+    // 2) Скрейпим карточку с view_url
+    try {
+      const data = await scrapeProduct(page, viewUrl);
+
+      const item: FeedItem = {
+        product_id: goodsId,
+        title: data.title || "",
+        price: data.price || "",
+        main_image: data.main_image || "",
+        images: data.images || [],
+        url: viewUrl,          // рендер берём отсюда
+        link_out,              // кликаут по партнёрке
+        in_stock: true,
+        last_seen: new Date().toISOString(),
+        category: row.category || undefined,
+      };
+
+      items.push(item);
+      console.log("✓", item.title || goodsId);
+    } catch (e: any) {
+      console.warn("Ошибка парсинга", viewUrl, e?.message || e);
+    }
+  }
+
+  await browser.close();
+
+  // Сгруппируем по категориям если она дана; иначе сложим в "all"
+  const byCat = new Map<string, FeedItem[]>();
+  for (const it of items) {
+    const cat = (it.category || "all").toLowerCase();
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat)!.push(it);
+  }
 
   const feed = {
     generatedAt: new Date().toISOString(),
-    categories: Object.entries(byCat).map(([name, items]) => ({ name, items }))
+    categories: Array.from(byCat.entries()).map(([name, items]) => ({
+      name,
+      items,
+    })),
   };
 
-  fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  ensureDir(OUT);
   fs.writeFileSync(OUT, JSON.stringify(feed, null, 2), "utf8");
-  console.log(`✅ feed saved → ${OUT}`);
-
-  // сохраним отчёт по ошибкам, если были
-  if (errors.length) {
-    fs.writeFileSync(ERR, JSON.stringify({ count: errors.length, errors }, null, 2), "utf8");
-    console.warn(`⚠️ some items failed (${errors.length}). See ${ERR}`);
-  } else if (fs.existsSync(ERR)) {
-    fs.unlinkSync(ERR);
-  }
+  console.log(`\n✅ feed saved → ${OUT} (${items.length} items)`);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+run().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
